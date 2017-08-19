@@ -42,11 +42,17 @@ struct iec_obj {
 class IEC104Parser
 {
 public:
-    IEC104Parser();
-    static const unsigned int START = 0x68;
-    unsigned short masterAddr;
-    unsigned char slaveAddr;
+    IEC104Parser(int clientfd);
+    ~IEC104Parser();
 
+    void start();
+
+private:
+    // 禁止拷贝构造函数和赋值运算符
+    IEC104Parser(const IEC104Parser &);
+    IEC104Parser& operator=(const IEC104Parser &);
+
+    static const unsigned int START = 0x68;
     //传送原因COT
     static const unsigned int CYCLIC = 1;
     static const unsigned int BGSCAN = 2;
@@ -62,7 +68,6 @@ public:
 
     //报文类型
     static const unsigned int INTERROGATION = 0x64;
-
 
     //U格式
     static const unsigned int STARTDTACT = 0x07;
@@ -107,38 +112,33 @@ public:
     static const unsigned int F_FR_NA_1 = 210; //　文件传输
     static const unsigned int F_SR_NA_1 = 211; //　软件升级
 
-    void disableSequenceOrderCheck();  // 允许序列乱序
+    void parse(const APDU * APDU,int sz);
 
-protected:
-    void parseAPDU(const apdu * papdu,int sz);
-    void readFromMaster();
     void totalCallConf();//总召唤回应
     void endTotalCall();//总召唤结束
+
     void clockSyncConf(const struct timeval * , const struct tm * );//时钟同步
     void readClockConf();//时钟读取确认
+
     void resetConf();//复位进程确认
+
     void sendYX();//发送遥信报文,总召唤
     void sendYC();//发送遥测报文，总召唤
+
     void sendYX_T();//发送遥信报文，自发数据或者突发事件发生
     void sendYC_T();//发送遥测报文，主动周期性的发送给主站
 
-    // ---- 纯虚函数，用户在派生类中定义（强制性）---
-    
-    virtual void sendTCP(char *data, int sz) = 0;
-    virtual int readTCP(char *data, int sz) = 0;
-    virtual void disconnectTCP() = 0;
+    void send(const APDU &apdu);
+    void send(const char *data, int sz);
+    int read(char *data, int sz);
+    void shutdown();
+    void disableSequenceOrderCheck();  // 允许序列乱序
 
-    
-    // ---- 虚函数，用户在派生类中定义（不是强制性的）---
-
-    // 用户点进程，用户提供。 （一次通话只能是一种类型的对象）组装接受报文？
-    virtual void dataIndication( iec_obj * /*obj*/, int /*numpoints*/){}
-
-private:
+    int fd_;
+    unsigned short masterAddr_;
     unsigned short VS; //发送包计数
     unsigned short VR; //接受包计数
     bool seq_order_check; //是否允许乱序
-
 };
 
 #endif // IEC104Parser_H

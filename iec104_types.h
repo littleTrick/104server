@@ -421,10 +421,10 @@ struct APCI
 //定义数据单元标识符
 struct ASDUH
 {
-    unsigned char typeIdentification;
+    unsigned char ti;
     unsigned char number :7;
     unsigned char sq :1;
-    unsigned short transCause;
+    unsigned short cot;
     unsigned short comAddr;
    // unsigned char oa; // 信息对象地址
 };
@@ -897,8 +897,7 @@ struct ASDUINFO
 
 };
 
-// 定义APDU
-struct apdu
+struct APDU
 {
     APCI apci;
     ASDUH asduh;
