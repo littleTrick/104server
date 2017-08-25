@@ -2,42 +2,9 @@
 #define IEC104Parser_H
 
 #include "iec104_types.h"
+#include "datacache.h"
 
 struct tm;
-
-struct iec_obj {
-    unsigned int address;  // 3 byte address
-
-    float value; // value
-
-    CP56Time2a timetag; // 7 byte time tag
-    unsigned char reserved; // for future use
-
-    unsigned char type; // iec type
-    unsigned char cause; //
-    unsigned short ca;  // common addres of asdu
-
-    union {
-        unsigned char ov :1; // overflow/no overflow
-        unsigned char sp :1; // single point information
-        unsigned char dp :2; // double point information
-        unsigned char scs :1; // single command state
-        unsigned char dcs :2; // double command state
-        unsigned char rcs :2; // regulating step command
-    }infoSort; // 2 bits
-
-    unsigned char qu :5; // qualifier of command
-    unsigned char se :1; // select=1 / execute=0
-    // + 6 bits = 8 bits
-
-    unsigned char bl :1; // blocked/not blocked
-    unsigned char sb :1; // substituted/not substituted
-    unsigned char nt :1; // not topical/topical
-    unsigned char iv :1; // valid/invalid
-    unsigned char t :1; // transient flag
-    unsigned char pn :1; // 0=positive, 1=negative
-};
-
 
 class IEC104Parser
 {
@@ -140,15 +107,16 @@ private:
     void shutdown();
     void disableSequenceOrderCheck();  // 允许序列乱序
 
-    void recvMCU(ASDU &asdu);//接受主控单元的报文
-    ASDU apduToasdu(const APDU &apdu);//104的APDU转101的ASDU
-    void asduToapdu(const ASDU &asdu);//101的ASDU转104的APDU
+    //void recvMCU(ASDU &asdu);//接受主控单元的报文
+    //ASDU apduToasdu(const APDU &apdu);//104的APDU转101的ASDU
+    //void asduToapdu(const ASDU &asdu);//101的ASDU转104的APDU
 
     int fd_;
     unsigned short masterAddr_;
     unsigned short VS; //发送包计数
     unsigned short VR; //接受包计数
     bool seq_order_check; //是否允许乱序
+    DataCache dataCache_;
 };
 
 #endif // IEC104Parser_H

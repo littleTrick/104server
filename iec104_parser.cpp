@@ -26,7 +26,7 @@ IEC104Parser::~IEC104Parser()
 {
     shutdown();
 }
-//104的APDU转101的ASDU，返回ASDU的必要信息——遥控
+/*//104的APDU转101的ASDU，返回ASDU的必要信息——遥控
 ASDU IEC104Parser::apduToasdu(const APDU &apdu)
 {
     ASDU asdu;
@@ -78,7 +78,7 @@ void IEC104Parser::recvMCU(ASDU &asdu)
 {
     asduToapdu(asdu);
 }
-
+*/
 //来自主站读取的数据重组ＡＰＤＵ
 void IEC104Parser::start()
 {
@@ -359,7 +359,7 @@ void IEC104Parser::sendYK(const APDU &apdu)
 //发送遥信报文 不带时标，地址连续的遥信单点信息。用于总召唤
 void IEC104Parser::sendYX()
 {
-    APDU wapdu;
+    /*APDU wapdu;
     wapdu.apci.start = START;
     wapdu.apci.lenth = 0x11;
     wapdu.apci.NS = VS;
@@ -400,7 +400,36 @@ void IEC104Parser::sendYX()
     wapdu.asduinfo.uinfo.siq.obj[3].IV = 0;
 
     send(wapdu);
-    VS += 2;
+    VS += 2;*/
+    APDU wapdu;
+    wapdu.apci.start = START;
+    wapdu.apci.NS = VS;
+    wapdu.apci.NR = VR;
+    for (int i = 0; i < dataCache_.yxVec_.size(); i++)
+    {
+        wapdu.apci.lenth = dataCache_.yxVec_[i].len + 5;//4位apci与1位信息地址
+        wapdu.asduh = dataCache_.yxVec_[i].asduh;
+
+        if(dataCache_.yxVec_[i].asduh.sq == 1)
+        {
+            wapdu.asduinfo.uinfo.siq.ioa16 = dataCache_.yxVec_[i].asduinfo.uinfo.siq.ioa16;
+            wapdu.asduinfo.uinfo.siq.ioa8 = 0;
+            for(int m = 0; m < dataCache_.yxVec_[i].len - 6; m++)//不带时标地址连续的单点信息（4位asduh与2位信息地址）
+            {
+                wapdu.asduinfo.uinfo.siq.obj[m] = dataCache_.yxVec_[i].asduinfo.uinfo.siq.obj[m];
+            }
+        }
+        else
+        {
+            for(int n = 0; n < (dataCache_.yxVec_[i].len - 4)/3; n++)//不带时标地址不连续，减去4位asduh
+            {
+                wapdu.asduinfo.uinfo.nsiq[n].ioa16 = dataCache_.yxVec_[i].asduinfo.uinfo.nsiq[n].ioa16;
+                wapdu.asduinfo.uinfo.siq.ioa8 = 0;
+                wapdu.asduinfo.uinfo.siq.obj[n] = dataCache_.yxVec_[i].asduinfo.uinfo.siq.obj[n];
+            }
+        }
+    }
+
 }
 
 //发送遥测报文，不带时标，地址连续的短浮点测量值。用于总召唤
@@ -523,12 +552,12 @@ void IEC104Parser::parse(const APDU *apdu, int sz)
         }
         VR = vr_new + 2; //为什么加２？
 
-        unsigned int addr24 = 0; //信息元素地址
-        const SIQ *pobj;
-        iec_obj *piecarr;
+       // unsigned int addr24 = 0; //信息元素地址
+        //const SIQ *pobj;
+        //iec_obj *piecarr;
         switch (apdu->asduh.ti)
         {
-        case M_SP_NA_1:
+        /*case M_SP_NA_1:
             piecarr = new iec_obj[apdu->asduh.number];
             for(int i = 0; i < apdu->asduh.number; i++)
             {
@@ -564,7 +593,7 @@ void IEC104Parser::parse(const APDU *apdu, int sz)
             }
             send((char *)piecarr, apdu->asduh.number * sizeof(iec_obj));
             delete[] piecarr;
-            break;
+            break;*/
         case M_ME_NC_1://变化遥测
             if(apdu->asduh.cot == SPONTANEOUS)
             {
@@ -630,7 +659,7 @@ void IEC104Parser::parse(const APDU *apdu, int sz)
         case C_RP_NA_1://复位进程命令105
             if(apdu->asduh.cot == ACTIVATION)
             {
-                apduToasdu(*apdu);
+               // apduToasdu(*apdu);
                 resetConf();
             }
             else
@@ -640,11 +669,11 @@ void IEC104Parser::parse(const APDU *apdu, int sz)
             //待写设备重启函数！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
             break;
         case C_SC_NA_1://遥控选择命45                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            令45
-            apduToasdu(*apdu);
+            //apduToasdu(*apdu);
             //执行结束报文
             break;
         case F_SC_NA_1://召唤目录
-            apduToasdu(*apdu);
+            //apduToasdu(*apdu);
             break;
         case F_FR_NA_1://文件传输
 
