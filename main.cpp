@@ -20,7 +20,7 @@ void* thread_main(void *arg)
     return 0;
 }
 
-void onNewConnection(int clientfd, sockaddr_in clientaddr)
+void on_new_connection(int clientfd, sockaddr_in clientaddr)
 {
     LOG(INFO) << inet_ntoa(clientaddr.sin_addr) << ":" << ntohs(clientaddr.sin_port) << " connected";
     Args *arg = new Args;
@@ -39,8 +39,8 @@ void onNewConnection(int clientfd, sockaddr_in clientaddr)
 }
 
 int main()
-{
-    TCPServer server(onNewConnection);
+{    
+    TCPServer server(on_new_connection);
     server.run();
     return 0;
 }

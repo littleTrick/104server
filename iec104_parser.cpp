@@ -1,11 +1,12 @@
 #include "iec104_parser.h"
 #include <cassert>
 #include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <queue>
 #include <sys/time.h>
 #include <stdlib.h>
-#include <cstdio>
 #include <unistd.h>
-#include <cstring>
 #include <iostream>
 #include "logging.h"
 
@@ -24,6 +25,58 @@ IEC104Parser::IEC104Parser(int clientfd)
 IEC104Parser::~IEC104Parser()
 {
     shutdown();
+}
+//104的APDU转101的ASDU，返回ASDU的必要信息——遥控
+ASDU IEC104Parser::apduToasdu(const APDU &apdu)
+{
+    ASDU asdu;
+    asdu.len1 = apdu.apci.lenth - 4 + 3 - 1;//apdu的长度减去APCI的长度即为ASDU长度
+    asdu.asduh = apdu.asduh;
+    asdu.asduinfo.uinfo.sco.ioa16 = apdu.asduinfo.uinfo.sco.ioa16;
+    asdu.asduinfo.uinfo.sco.obj[0] = apdu.asduinfo.uinfo.sco.obj[0];
+    return asdu;
+}
+
+//101ASDU转104APDU,遥控
+void IEC104Parser::asduToapdu(const ASDU &asdu)
+{
+    APDU apdu;
+    apdu.apci.start = START;
+    apdu.apci.lenth = asdu.len1-3+4+1;
+    apdu.apci.NS = VS;
+    apdu.apci.NR = VR;
+    apdu.asduh = asdu.asduh;
+    apdu.asduinfo.uinfo.sco.ioa16 = asdu.asduinfo.uinfo.sco.ioa16;
+    apdu.asduinfo.uinfo.sco.ioa8 = 0;
+    apdu.asduinfo.uinfo.sco.obj[0] = asdu.asduinfo.uinfo.sco.obj[0];
+
+    if(apdu.asduh.ti == 45 && apdu.asduh.cot == 7 && apdu.asduinfo.uinfo.sco.obj[0].ES == 1)
+    {
+        send(apdu);
+    }
+    else if(apdu.asduh.ti == 45 && apdu.asduh.cot == 9 && apdu.asduinfo.uinfo.sco.obj[0].ES == 0)
+    {
+        send(apdu);
+    }
+    else if(apdu.asduh.ti == 45 && apdu.asduh.cot == 7 && apdu.asduinfo.uinfo.sco.obj[0].ES == 0)
+    {
+        send(apdu);
+    }
+    else if(apdu.asduh.ti == 45 && apdu.asduh.cot == 10 && apdu.asduinfo.uinfo.sco.obj[0].ES == 0)
+    {
+        send(apdu);
+    }
+    else
+    {
+        LOG(WARN) << "--> invalid YC apdu";
+    }
+
+}
+
+//接收来自主控单元的报文
+void IEC104Parser::recvMCU(ASDU &asdu)
+{
+    asduToapdu(asdu);
 }
 
 //来自主站读取的数据重组ＡＰＤＵ
@@ -111,7 +164,6 @@ void IEC104Parser::send(const char *data, int sz)
 void IEC104Parser::send(const APDU &apdu)
 {
     send((char*)&apdu, apdu.apci.lenth + 2);
-    VS += 2;
 }
 
 void IEC104Parser::shutdown()
@@ -141,6 +193,7 @@ void IEC104Parser::totalCallConf()
     wapdu.asduinfo.uinfo.dados[2] = 0x00;
     wapdu.asduinfo.uinfo.dados[3] = 0x14; //召唤限定词
     send(wapdu);
+    VS += 2;
 }
 
 //总召唤结束
@@ -161,6 +214,7 @@ void IEC104Parser::endTotalCall()
     wapdu.asduinfo.uinfo.dados[2] = 0x00;
     wapdu.asduinfo.uinfo.dados[3] = 0x14; //召唤限定词
     send(wapdu);
+    VS += 2;
 }
 
 //时钟读取确认
@@ -181,7 +235,7 @@ void IEC104Parser::readClockConf()
     time_t tm1 = time( NULL );
     struct timeval time_tv;
     tm *agora = localtime( &tm1 );
-    gettimeofday(&time_tv,0);//为获取微妙而生
+    gettimeofday(&time_tv,0);//为获取微秒而生
 
     wapdu.asduinfo.uinfo.csc.ioa16 = 0;
     wapdu.asduinfo.uinfo.csc.ioa8 = 0;
@@ -192,6 +246,7 @@ void IEC104Parser::readClockConf()
     wapdu.asduinfo.uinfo.csc.obj[0].time.min = (unsigned char)agora->tm_min;
     wapdu.asduinfo.uinfo.csc.obj[0].time.msec = (unsigned short)(agora->tm_sec * 1000 + time_tv.tv_usec /1000);
     send(wapdu);
+    VS += 2;
 }
 
 //时钟同步帧
@@ -219,6 +274,7 @@ void IEC104Parser::clockSyncConf(const struct timeval *time_tv,const struct tm *
     wapdu.asduinfo.uinfo.csc.obj[0].time.msec = (unsigned short)(time_tm->tm_sec * 1000 + time_tv->tv_usec / 1000);
 
     send(wapdu);
+    VS += 2;
 }
 
 //复位进程确认
@@ -239,6 +295,65 @@ void IEC104Parser::resetConf()
     wapdu.asduinfo.uinfo.grp.obj[0].VGR = QRP;
 
     send(wapdu);
+    VS += 2;
+}
+//发送遥控报文
+void IEC104Parser::sendYK(const APDU &apdu)
+{
+    APDU wapdu;
+    wapdu.apci.start = START;
+    wapdu.apci.lenth = 0x0E;
+    wapdu.apci.NS = VS;
+    wapdu.apci.NR = VR;
+    wapdu.asduh.ti = 0x2D;
+    wapdu.asduh.number = 1;
+    wapdu.asduh.sq = 0;
+    wapdu.asduh.comAddr = masterAddr_;
+    wapdu.asduinfo.uinfo.grp.ioa16 = 7000;
+    wapdu.asduinfo.uinfo.grp.ioa8 = 0;
+
+    if(apdu.asduh.cot==ACTIVATION  && apdu.asduinfo.uinfo.sco.obj[0].ES==1)//选择命令
+    {
+       wapdu.asduh.cot = ACTCONFIRM;
+       wapdu.asduinfo.uinfo.sco.obj[0].ES = 1;
+    }
+    else if(apdu.asduh.cot== DEACTIVATION && apdu.asduinfo.uinfo.sco.obj[0].ES==0)//撤销命令
+    {
+        wapdu.asduh.cot = DEACTCONFIRM;
+        wapdu.asduinfo.uinfo.sco.obj[0].ES = 0;
+    }
+    else if(apdu.asduh.cot==ACTIVATION && apdu.asduinfo.uinfo.sco.obj[0].ES==0)//执行命令
+    {
+        wapdu.asduh.cot = ACTCONFIRM;
+        wapdu.asduinfo.uinfo.sco.obj[0].ES = 0;
+    }
+    else
+    {
+        LOG(ERROR) << "YK invalid cot " << apdu.asduh.cot << " client fd=" << fd_;
+    }
+
+    send(wapdu);
+    VS += 2;
+
+    if(apdu.asduh.cot==ACTIVATION && apdu.asduinfo.uinfo.sco.obj[0].ES==0)//执行命令
+    {
+        APDU papdu;
+        papdu.apci.start = START;
+        papdu.apci.lenth = 0x0E;
+        papdu.apci.NS = VS;
+        papdu.apci.NR = VR;
+        papdu.asduh.ti = 0x2D;
+        papdu.asduh.number = 1;
+        papdu.asduh.sq = 0;
+        papdu.asduh.comAddr = masterAddr_;
+        papdu.asduinfo.uinfo.grp.ioa16 = 7000;
+        papdu.asduinfo.uinfo.grp.ioa8 = 0;
+        papdu.asduh.cot = ACTTERM;
+        papdu.asduinfo.uinfo.sco.obj[0].ES = 0;
+
+        send(papdu);
+        VS += 2;
+    }
 }
 
 //发送遥信报文 不带时标，地址连续的遥信单点信息。用于总召唤
@@ -285,6 +400,7 @@ void IEC104Parser::sendYX()
     wapdu.asduinfo.uinfo.siq.obj[3].IV = 0;
 
     send(wapdu);
+    VS += 2;
 }
 
 //发送遥测报文，不带时标，地址连续的短浮点测量值。用于总召唤
@@ -335,6 +451,7 @@ void IEC104Parser::sendYC()
     wapdu.asduinfo.uinfo.std.obj[3].IV = 0;
 
     send(wapdu);
+    VS += 2;
 }
 
 //解析报文函数
@@ -513,6 +630,7 @@ void IEC104Parser::parse(const APDU *apdu, int sz)
         case C_RP_NA_1://复位进程命令105
             if(apdu->asduh.cot == ACTIVATION)
             {
+                apduToasdu(*apdu);
                 resetConf();
             }
             else
@@ -521,6 +639,15 @@ void IEC104Parser::parse(const APDU *apdu, int sz)
             }
             //待写设备重启函数！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
             break;
+        case C_SC_NA_1://遥控选择命45                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            令45
+            apduToasdu(*apdu);
+            //执行结束报文
+            break;
+        case F_SC_NA_1://召唤目录
+            apduToasdu(*apdu);
+            break;
+        case F_FR_NA_1://文件传输
+
         default:
             LOG(FATAL) << "unknown TI " << apdu->asduh.ti;
             break;

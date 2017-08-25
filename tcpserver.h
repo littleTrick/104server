@@ -12,7 +12,7 @@
 class TCPServer
 {
 public:
-    // 回調函數指針
+    // 回调函数指针
     typedef void(*ConnectionCallback)(int fd, sockaddr_in addr);
 
     TCPServer(ConnectionCallback cb);

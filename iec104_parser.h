@@ -60,6 +60,8 @@ private:
     static const unsigned int REQUEST = 5;//被请求
     static const unsigned int ACTIVATION = 6;//激活
     static const unsigned int ACTCONFIRM = 7;//激活确认
+    static const unsigned int DEACTIVATION = 8;//停止激活
+    static const unsigned int DEACTCONFIRM = 9;//停止激活确认
     static const unsigned int ACTTERM = 10;//激活终止
     static const unsigned int INTROGEN = 20;//响应站召唤
 
@@ -105,6 +107,8 @@ private:
     static const unsigned int C_CI_NA_1 = 101; // 电能量召唤命令
     static const unsigned int C_CS_NA_1 = 103; // 时钟同步命令
     static const unsigned int C_RP_NA_1 = 105; // 复位进程命令
+    static const unsigned int F_SC_NA_1 = 122; // 召唤目录，选择文件，召唤文件，召唤节
+    static const unsigned int F_DR_TA_1 = 126; // 目录命令确认
     static const unsigned int C_SR_NA_1 = 200; //　切换定值区
     static const unsigned int C_RR_NA_1 = 201; //　读定值区号
     static const unsigned int C_RS_NA_1 = 202; //　读参数和定值
@@ -128,11 +132,17 @@ private:
     void sendYX_T();//发送遥信报文，自发数据或者突发事件发生
     void sendYC_T();//发送遥测报文，主动周期性的发送给主站
 
+    void sendYK(const APDU &apdu);//发送遥控报文
+
     void send(const APDU &apdu);
     void send(const char *data, int sz);
     int read(char *data, int sz);
     void shutdown();
     void disableSequenceOrderCheck();  // 允许序列乱序
+
+    void recvMCU(ASDU &asdu);//接受主控单元的报文
+    ASDU apduToasdu(const APDU &apdu);//104的APDU转101的ASDU
+    void asduToapdu(const ASDU &asdu);//101的ASDU转104的APDU
 
     int fd_;
     unsigned short masterAddr_;
