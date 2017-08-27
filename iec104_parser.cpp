@@ -12,6 +12,8 @@
 
 using namespace std;
 
+DataCache g_dataCache;
+
 IEC104Parser::IEC104Parser(int clientfd)
 {
 
@@ -20,10 +22,12 @@ IEC104Parser::IEC104Parser(int clientfd)
     seq_order_check = true;
     VS = 0;
     VR = 0;
+    g_dataCache.registerObserver(this);
 }
 
 IEC104Parser::~IEC104Parser()
 {
+    g_dataCache.unregisterObserver(this);
     shutdown();
 }
 /*//104的APDU转101的ASDU，返回ASDU的必要信息——遥控
@@ -359,128 +363,262 @@ void IEC104Parser::sendYK(const APDU &apdu)
 //发送遥信报文 不带时标，地址连续的遥信单点信息。用于总召唤
 void IEC104Parser::sendYX()
 {
-    /*APDU wapdu;
-    wapdu.apci.start = START;
-    wapdu.apci.lenth = 0x11;
-    wapdu.apci.NS = VS;
-    wapdu.apci.NR = VR;
-    wapdu.asduh.ti = 1;//单点信息M_SP_NA_1
-    wapdu.asduh.number = 4;
-    wapdu.asduh.sq = 1;
-    wapdu.asduh.cot = INTROGEN;//响应站召唤
-    wapdu.asduh.comAddr = masterAddr_;
-    wapdu.asduinfo.uinfo.siq.ioa16 = 1000;
-    wapdu.asduinfo.uinfo.siq.ioa8 = 0;
-    wapdu.asduinfo.uinfo.siq.obj[0].SPI = 0;
-    wapdu.asduinfo.uinfo.siq.obj[0].RES = 0;
-    wapdu.asduinfo.uinfo.siq.obj[0].BL = 1;
-    wapdu.asduinfo.uinfo.siq.obj[0].SB = 1;
-    wapdu.asduinfo.uinfo.siq.obj[0].NT = 1;
-    wapdu.asduinfo.uinfo.siq.obj[0].IV = 1;
-
-    wapdu.asduinfo.uinfo.siq.obj[1].SPI = 0;
-    wapdu.asduinfo.uinfo.siq.obj[1].RES = 0;
-    wapdu.asduinfo.uinfo.siq.obj[1].BL = 0;
-    wapdu.asduinfo.uinfo.siq.obj[1].SB = 0;
-    wapdu.asduinfo.uinfo.siq.obj[1].NT = 0;
-    wapdu.asduinfo.uinfo.siq.obj[1].IV = 0;
-
-    wapdu.asduinfo.uinfo.siq.obj[2].SPI = 0;
-    wapdu.asduinfo.uinfo.siq.obj[2].RES = 0;
-    wapdu.asduinfo.uinfo.siq.obj[2].BL = 1;
-    wapdu.asduinfo.uinfo.siq.obj[2].SB = 1;
-    wapdu.asduinfo.uinfo.siq.obj[2].NT = 1;
-    wapdu.asduinfo.uinfo.siq.obj[2].IV = 1;
-
-    wapdu.asduinfo.uinfo.siq.obj[3].SPI = 0;
-    wapdu.asduinfo.uinfo.siq.obj[3].RES = 0;
-    wapdu.asduinfo.uinfo.siq.obj[3].BL = 0;
-    wapdu.asduinfo.uinfo.siq.obj[3].SB = 0;
-    wapdu.asduinfo.uinfo.siq.obj[3].NT = 0;
-    wapdu.asduinfo.uinfo.siq.obj[3].IV = 0;
-
-    send(wapdu);
-    VS += 2;*/
     APDU wapdu;
-    wapdu.apci.start = START;
-    wapdu.apci.NS = VS;
-    wapdu.apci.NR = VR;
-    for (int i = 0; i < dataCache_.yxVec_.size(); i++)
+    if(!g_dataCache.yxVec_.empty())
     {
-        wapdu.apci.lenth = dataCache_.yxVec_[i].len + 5;//4位apci与1位信息地址
-        wapdu.asduh = dataCache_.yxVec_[i].asduh;
+        for (unsigned int i = 0; i < g_dataCache.yxVec_.size(); i++)//循环从yxvector中取报文
+        {
+            wapdu.apci.start = START;
+            wapdu.apci.NS = VS;
+            wapdu.apci.NR = VR;
+            wapdu.apci.lenth = g_dataCache.yxVec_[i].len + 5;//4位apci与1位信息地址
+            wapdu.asduh = g_dataCache.yxVec_[i].asduh;
 
-        if(dataCache_.yxVec_[i].asduh.sq == 1)
-        {
-            wapdu.asduinfo.uinfo.siq.ioa16 = dataCache_.yxVec_[i].asduinfo.uinfo.siq.ioa16;
-            wapdu.asduinfo.uinfo.siq.ioa8 = 0;
-            for(int m = 0; m < dataCache_.yxVec_[i].len - 6; m++)//不带时标地址连续的单点信息（4位asduh与2位信息地址）
+            if(g_dataCache.yxVec_[i].asduh.sq == 1)
             {
-                wapdu.asduinfo.uinfo.siq.obj[m] = dataCache_.yxVec_[i].asduinfo.uinfo.siq.obj[m];
-            }
-        }
-        else
-        {
-            for(int n = 0; n < (dataCache_.yxVec_[i].len - 4)/3; n++)//不带时标地址不连续，减去4位asduh
-            {
-                wapdu.asduinfo.uinfo.nsiq[n].ioa16 = dataCache_.yxVec_[i].asduinfo.uinfo.nsiq[n].ioa16;
+                wapdu.asduinfo.uinfo.siq.ioa16 = g_dataCache.yxVec_[i].asduinfo.uinfo.siq.ioa16;
                 wapdu.asduinfo.uinfo.siq.ioa8 = 0;
-                wapdu.asduinfo.uinfo.siq.obj[n] = dataCache_.yxVec_[i].asduinfo.uinfo.siq.obj[n];
+                for(int m = 0; m < g_dataCache.yxVec_[i].len - 8; m++)//不带时标地址连续的单点信息（6位asduh与2位信息地址）
+                {
+                    wapdu.asduinfo.uinfo.siq.obj[m] = g_dataCache.yxVec_[i].asduinfo.uinfo.siq.obj[m];
+                }
             }
+            else
+            {
+                for(int n = 0; n < (g_dataCache.yxVec_[i].len - 6)/3; n++)//不带时标地址不连续，减去6位asduh,除以2位信息题地址与1位信息元素
+                {
+                    wapdu.asduinfo.uinfo.nsiq[n].ioa16 = g_dataCache.yxVec_[i].asduinfo.uinfo.nsiq[n].ioa16;
+                    wapdu.asduinfo.uinfo.nsiq[n].ioa8 = 0;
+                    wapdu.asduinfo.uinfo.nsiq[n].obj = g_dataCache.yxVec_[i].asduinfo.uinfo.nsiq[n].obj;
+                }
+            }
+            send(wapdu);
+            VS += 2;
+            vector <ASDU>().swap(g_dataCache.yxVec_);//清空缓存区并释放内存
         }
     }
-
+    else
+    {
+        LOG(WARN) << "-->YX VECTOR IS NULL";
+    }
 }
+
+//模拟用于总召唤的遥信报文
+void IEC104Parser::SimuYX()
+{
+    ASDU sapdu;
+    sapdu.len = 0x0A;
+    sapdu.asduh.ti = 1;//单点信息M_SP_NA_1
+    sapdu.asduh.number = 2;
+    sapdu.asduh.sq = 1;
+    sapdu.asduh.cot = INTROGEN;//响应站召唤
+    sapdu.asduh.comAddr = masterAddr_;
+    sapdu.asduinfo.uinfo.siq.ioa16 = 1000;
+    sapdu.asduinfo.uinfo.siq.obj[0].SPI = 1;
+    sapdu.asduinfo.uinfo.siq.obj[0].RES = 1;
+    sapdu.asduinfo.uinfo.siq.obj[0].BL = 1;
+    sapdu.asduinfo.uinfo.siq.obj[0].SB = 1;
+    sapdu.asduinfo.uinfo.siq.obj[0].NT = 1;
+    sapdu.asduinfo.uinfo.siq.obj[0].IV = 1;
+
+    sapdu.asduinfo.uinfo.siq.obj[1].SPI = 0;
+    sapdu.asduinfo.uinfo.siq.obj[1].RES = 0;
+    sapdu.asduinfo.uinfo.siq.obj[1].BL = 0;
+    sapdu.asduinfo.uinfo.siq.obj[1].SB = 0;
+    sapdu.asduinfo.uinfo.siq.obj[1].NT = 0;
+    sapdu.asduinfo.uinfo.siq.obj[1].IV = 0;
+
+    g_dataCache.WriteYXVec(sapdu);
+}
+
 
 //发送遥测报文，不带时标，地址连续的短浮点测量值。用于总召唤
 void IEC104Parser::sendYC()
 {
     APDU wapdu;
-    wapdu.apci.start = START;
-    wapdu.apci.lenth = 0x21;
-    wapdu.apci.NS = VS;
-    wapdu.apci.NR = VR;
-    wapdu.asduh.ti = 13;//短浮点数类型标识
-    wapdu.asduh.number = 4;
-    wapdu.asduh.sq = 1;
-    wapdu.asduh.cot = INTROGEN;//响应站召唤
-    wapdu.asduh.comAddr = masterAddr_;
-    wapdu.asduinfo.uinfo.std.ioa16 = 4001;
-    wapdu.asduinfo.uinfo.std.ioa8 = 0;
-    wapdu.asduinfo.uinfo.std.obj[0].mv = 1.05;
-    wapdu.asduinfo.uinfo.std.obj[0].OV = 0;
-    wapdu.asduinfo.uinfo.std.obj[0].RES = 0;
-    wapdu.asduinfo.uinfo.std.obj[0].BL = 0;
-    wapdu.asduinfo.uinfo.std.obj[0].SB = 0;
-    wapdu.asduinfo.uinfo.std.obj[0].NT = 0;
-    wapdu.asduinfo.uinfo.std.obj[0].IV = 0;
+    if(!g_dataCache.ycVec_.empty())
+    {
+        for (unsigned int i = 0; i < g_dataCache.ycVec_.size(); i++)//循环从ycvector中取报文
+        {
+            wapdu.apci.start = START;
+            wapdu.apci.NS = VS;
+            wapdu.apci.NR = VR;
+            wapdu.apci.lenth = g_dataCache.ycVec_[i].len + 5;//4位apci与1位信息地址
+            wapdu.asduh = g_dataCache.ycVec_[i].asduh;
 
-    wapdu.asduinfo.uinfo.std.obj[1].mv = 1.15;
-    wapdu.asduinfo.uinfo.std.obj[1].OV = 0;
-    wapdu.asduinfo.uinfo.std.obj[1].RES = 0;
-    wapdu.asduinfo.uinfo.std.obj[1].BL = 0;
-    wapdu.asduinfo.uinfo.std.obj[1].SB = 0;
-    wapdu.asduinfo.uinfo.std.obj[1].NT = 0;
-    wapdu.asduinfo.uinfo.std.obj[1].IV = 0;
+            if(g_dataCache.ycVec_[i].asduh.sq == 1)
+            {
+                wapdu.asduinfo.uinfo.std.ioa16 = g_dataCache.ycVec_[i].asduinfo.uinfo.std.ioa16;
+                wapdu.asduinfo.uinfo.std.ioa8 = 0;
+                for(int m = 0; m < (g_dataCache.ycVec_[i].len - 8)/5; m++)//不带时标地址连续的单点信息（6位asduh）
+                {
+                    wapdu.asduinfo.uinfo.std.obj[m] = g_dataCache.ycVec_[i].asduinfo.uinfo.std.obj[m];
+                }
+            }
+            else
+            {
+                for(int n = 0; n < (g_dataCache.ycVec_[i].len - 6)/7; n++)//不带时标地址不连续，减去6位asduh，除以2位信息地址，4位浮点数，1位品质描述
+                {
+                    wapdu.asduinfo.uinfo.nstd[n].ioa16 = g_dataCache.ycVec_[i].asduinfo.uinfo.nstd[n].ioa16;
+                    wapdu.asduinfo.uinfo.nstd[n].ioa8 = 0;
+                    wapdu.asduinfo.uinfo.nstd[n].obj = g_dataCache.ycVec_[i].asduinfo.uinfo.nstd[n].obj;
+                }
+            }
+            send(wapdu);
+            VS += 2;
+            vector <ASDU>().swap(g_dataCache.ycVec_);//清空遥测缓存区并释放内存
+        }
+    }
+    else
+    {
+        LOG(WARN) << "-->YC VECTOR IS NULL";
+    }
+}
 
-    wapdu.asduinfo.uinfo.std.obj[2].mv = 1.25;
-    wapdu.asduinfo.uinfo.std.obj[2].OV = 0;
-    wapdu.asduinfo.uinfo.std.obj[2].RES = 0;
-    wapdu.asduinfo.uinfo.std.obj[2].BL = 0;
-    wapdu.asduinfo.uinfo.std.obj[2].SB = 0;
-    wapdu.asduinfo.uinfo.std.obj[2].NT = 0;
-    wapdu.asduinfo.uinfo.std.obj[2].IV = 0;
+//模拟遥测报文，用于总召唤
+void IEC104Parser::SimuYC()
+{
+    ASDU sapdu;
+    sapdu.len = 0x12;
+    sapdu.asduh.ti = 13;//短浮点数类型标识
+    sapdu.asduh.number = 2;
+    sapdu.asduh.sq = 1;
+    sapdu.asduh.cot = INTROGEN;//响应站召唤
+    sapdu.asduh.comAddr = masterAddr_;
 
-    wapdu.asduinfo.uinfo.std.obj[3].mv = 1.35;
-    wapdu.asduinfo.uinfo.std.obj[3].OV = 0;
-    wapdu.asduinfo.uinfo.std.obj[3].RES = 0;
-    wapdu.asduinfo.uinfo.std.obj[3].BL = 0;
-    wapdu.asduinfo.uinfo.std.obj[3].SB = 0;
-    wapdu.asduinfo.uinfo.std.obj[3].NT = 0;
-    wapdu.asduinfo.uinfo.std.obj[3].IV = 0;
+    sapdu.asduinfo.uinfo.std.ioa16 = 4001;
+    sapdu.asduinfo.uinfo.std.obj[0].mv = 1.05;
+    sapdu.asduinfo.uinfo.std.obj[0].OV = 0;
+    sapdu.asduinfo.uinfo.std.obj[0].RES = 0;
+    sapdu.asduinfo.uinfo.std.obj[0].BL = 0;
+    sapdu.asduinfo.uinfo.std.obj[0].SB = 0;
+    sapdu.asduinfo.uinfo.std.obj[0].NT = 0;
+    sapdu.asduinfo.uinfo.std.obj[0].IV = 0;
 
-    send(wapdu);
-    VS += 2;
+    sapdu.asduinfo.uinfo.std.obj[1].mv = 1.15;
+    sapdu.asduinfo.uinfo.std.obj[1].OV = 0;
+    sapdu.asduinfo.uinfo.std.obj[1].RES = 0;
+    sapdu.asduinfo.uinfo.std.obj[1].BL = 0;
+    sapdu.asduinfo.uinfo.std.obj[1].SB = 0;
+    sapdu.asduinfo.uinfo.std.obj[1].NT = 0;
+    sapdu.asduinfo.uinfo.std.obj[1].IV = 0;
+
+    g_dataCache.WriteYCVec(sapdu);
+}
+
+//发送SOE
+void IEC104Parser::sendSOE()
+{
+    APDU wapdu;
+    for (unsigned int i = 0; i < g_dataCache.SOEVec_.size(); i++)//循环从SOEvector中取报文
+    {
+        wapdu.apci.start = START;
+        wapdu.apci.NS = VS;
+        wapdu.apci.NR = VR;
+        wapdu.apci.lenth = g_dataCache.SOEVec_[i].len + 5;//增加4位apci与1位信息地址
+        wapdu.asduh = g_dataCache.SOEVec_[i].asduh;
+
+        if(g_dataCache.SOEVec_[i].asduh.sq == 0)
+        {
+            for(int n = 0; n < (g_dataCache.SOEVec_[i].len - 6)/10; n++)//不带时标地址不连续，减去6位asduh，除以2位信息地址，1位品质描述.7位时标
+            {
+                wapdu.asduinfo.uinfo.nsiq_t[n].ioa16 = g_dataCache.SOEVec_[i].asduinfo.uinfo.nsiq_t[n].ioa16;
+                wapdu.asduinfo.uinfo.nsiq_t[n].ioa8 = 0;
+                wapdu.asduinfo.uinfo.nsiq_t[n].obj = g_dataCache.SOEVec_[i].asduinfo.uinfo.nsiq_t[n].obj;
+            }
+            send(wapdu);
+            VS += 2;
+        }
+        else
+        {
+            LOG(WARN) << "-->THE SQ OF SOE IS EQUAL TO 0 ";//SOE不存在连续地址的序列
+        }
+    }
+}
+
+void IEC104Parser::SimuSOE()
+{
+    ASDU sasdu;
+    sasdu.len = 16;
+    sasdu.asduh.ti = 30;//M_SP_TB_1
+    sasdu.asduh.sq = 0;
+    sasdu.asduh.number = 1;
+    sasdu.asduh.cot = 3;
+    sasdu.asduh.comAddr = 1;
+    sasdu.asduinfo.uinfo.nsiq_t[0].ioa16 =  2000;
+    sasdu.asduinfo.uinfo.nsiq_t[0].obj.BL = 1;
+    sasdu.asduinfo.uinfo.nsiq_t[0].obj.IV =1;
+    sasdu.asduinfo.uinfo.nsiq_t[0].obj.NT =1;
+    sasdu.asduinfo.uinfo.nsiq_t[0].obj.RES = 1;
+    sasdu.asduinfo.uinfo.nsiq_t[0].obj.SB = 1;
+    sasdu.asduinfo.uinfo.nsiq_t[0].obj.SPI = 1;
+    sasdu.asduinfo.uinfo.nsiq_t[0].obj.time.hour = 6;
+    sasdu.asduinfo.uinfo.nsiq_t[0].obj.time.mday = 6;
+    sasdu.asduinfo.uinfo.nsiq_t[0].obj.time.min =6;
+    sasdu.asduinfo.uinfo.nsiq_t[0].obj.time.month =6;
+    sasdu.asduinfo.uinfo.nsiq_t[0].obj.time.msec = 6006;
+    sasdu.asduinfo.uinfo.nsiq_t[0].obj.time.year = 17;
+
+    g_dataCache.AutoSendSOE(sasdu);
+}
+
+//发送变化遥测至主站
+void IEC104Parser::sendVarYC()
+{
+    APDU wapdu;
+    for (unsigned int i = 0; i < g_dataCache.VarYCVec_.size(); i++)//循环从SOEvector中取报文
+    {
+        wapdu.apci.start = START;
+        wapdu.apci.NS = VS;
+        wapdu.apci.NR = VR;
+        wapdu.apci.lenth = g_dataCache.VarYCVec_[i].len + 5;//增加4位apci与1位信息地址
+        wapdu.asduh = g_dataCache.VarYCVec_[i].asduh;
+
+        if(g_dataCache.VarYCVec_[i].asduh.sq == 0)
+        {
+            for(int n = 0; n < (g_dataCache.VarYCVec_[i].len - 6)/14; n++)//不带时标地址不连续，减去6位asduh，除以2位信息地址，1位品质描述.，4位值，7位时标
+            {
+                wapdu.asduinfo.uinfo.nstd_t[n].ioa16 = g_dataCache.VarYCVec_[i].asduinfo.uinfo.nstd_t[n].ioa16;
+                wapdu.asduinfo.uinfo.nstd_t[n].ioa8 = 0;
+                wapdu.asduinfo.uinfo.nstd_t[n].obj = g_dataCache.VarYCVec_[i].asduinfo.uinfo.nstd_t[n].obj;
+            }
+            send(wapdu);
+            VS += 2;
+        }
+        else
+        {
+            LOG(WARN) << "-->THE SQ OF VARIANTION OF YC IS EQUAL TO 0 ";//变化遥测不存在连续地址的序列
+        }
+    }
+}
+
+void IEC104Parser::SimuVarYC() //测试时使用
+{
+    ASDU sasdu;
+    sasdu.len = 20;
+    sasdu.asduh.ti = 36;//M_ME_TE_1
+    sasdu.asduh.sq = 0;
+    sasdu.asduh.number = 1;
+    sasdu.asduh.cot = 3;
+    sasdu.asduh.comAddr = 1;
+    sasdu.asduinfo.uinfo.nstd_t[0].ioa16 =  5555;
+
+    sasdu.asduinfo.uinfo.nstd_t[0].obj.mv = 6.66;
+    sasdu.asduinfo.uinfo.nstd_t[0].obj.OV = 1;
+    sasdu.asduinfo.uinfo.nstd_t[0].obj.RES = 0;
+    sasdu.asduinfo.uinfo.nstd_t[0].obj.BL =1;
+    sasdu.asduinfo.uinfo.nstd_t[0].obj.SB =1;
+    sasdu.asduinfo.uinfo.nstd_t[0].obj.NT =1;
+    sasdu.asduinfo.uinfo.nstd_t[0].obj.IV =1;
+
+    sasdu.asduinfo.uinfo.nstd_t[0].obj.time.hour = 6;
+    sasdu.asduinfo.uinfo.nstd_t[0].obj.time.mday = 6;
+    sasdu.asduinfo.uinfo.nstd_t[0].obj.time.min =6;
+    sasdu.asduinfo.uinfo.nstd_t[0].obj.time.month =6;
+    sasdu.asduinfo.uinfo.nstd_t[0].obj.time.msec = 6006;
+    sasdu.asduinfo.uinfo.nstd_t[0].obj.time.year = 17;
+
+    g_dataCache.AutoSendVarYC(sasdu);
 }
 
 //解析报文函数
@@ -607,7 +745,9 @@ void IEC104Parser::parse(const APDU *apdu, int sz)
         case C_IC_NA_1://总召唤
             totalCallConf();//总召唤确认
             //发送遥测与遥信数据
+            SimuYX();//写入遥信数据至vector中
             sendYX();
+            SimuYC();//写入遥测数据至vector中
             sendYC();
             endTotalCall();//总召唤结束
             break;

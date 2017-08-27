@@ -426,7 +426,6 @@ struct ASDUH
     unsigned char sq :1;
     unsigned short cot;
     unsigned short comAddr;
-   // unsigned char oa; // 信息对象地址
 };
 
 //定义信息对象

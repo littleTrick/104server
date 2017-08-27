@@ -1,9 +1,12 @@
 #ifndef DATACACHE_H
 #define DATACACHE_H
-#include<vector>
-#include"iec104_types.h"
+#include <vector>
+#include "iec104_types.h"
+#include "iec104_parser.h"
 
 using std::vector;
+
+class IEC104Parser;
 
 struct ASDUINFO1
 {
@@ -397,8 +400,8 @@ struct ASDUINFO1
 
 struct ASDU
 {
-    unsigned char len;
-    ASDUH asduh;
+    unsigned char len;//asduh + asduinfo
+    ASDUH asduh; //6bit
     ASDUINFO1 asduinfo;
 };
 
@@ -407,12 +410,23 @@ class DataCache
 {
 public:
     DataCache();
-    ASDU DataFormatConver();//原意是数据转化为ASDU结构
-    void WriteYXVec(const ASDU &asdu);//向遥信vector中写入数据
-    //ASDU ReadYXVec();//取遥信数据的接口函数
-    vector<ASDU> yxVec_;
-    vector<ASDU> ycVec_;
 
+    void registerObserver(IEC104Parser *parser);//注册回调对象
+    void unregisterObserver(IEC104Parser *parser);//删除回调对象
+
+    void WriteYXVec(const ASDU &asdu);//向遥信vector中写入数据
+    void WriteYCVec(const ASDU &asdu);//向遥测vector中写入数据
+
+    void AutoSendSOE(const ASDU &asdu);//自动上送SOE数据，事件触发
+    void AutoSendVarYC(const ASDU &asdu);//自动上送变化遥测数据，事件触发
+
+    vector<ASDU> yxVec_;//遥信数据缓存区
+    vector<ASDU> ycVec_;//遥测数据缓存区
+    vector<ASDU> SOEVec_;//SOE数据缓存区
+    vector<ASDU> VarYCVec_;//变化遥测缓存区
+
+private:
+    vector<IEC104Parser*> server_;//用于记录注册的对象
 
 };
 

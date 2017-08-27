@@ -14,6 +14,9 @@ public:
 
     void start();
 
+    void sendSOE();//发送遥信报文，自发数据或者突发事件发生
+    void sendVarYC();//发送遥测报文，自发数据或者突发发送给主站
+
 private:
     // 禁止拷贝构造函数和赋值运算符
     IEC104Parser(const IEC104Parser &);
@@ -96,9 +99,6 @@ private:
     void sendYX();//发送遥信报文,总召唤
     void sendYC();//发送遥测报文，总召唤
 
-    void sendYX_T();//发送遥信报文，自发数据或者突发事件发生
-    void sendYC_T();//发送遥测报文，主动周期性的发送给主站
-
     void sendYK(const APDU &apdu);//发送遥控报文
 
     void send(const APDU &apdu);
@@ -106,6 +106,11 @@ private:
     int read(char *data, int sz);
     void shutdown();
     void disableSequenceOrderCheck();  // 允许序列乱序
+
+    void SimuYX();
+    void SimuYC();
+    void SimuSOE();
+    void SimuVarYC();
 
     //void recvMCU(ASDU &asdu);//接受主控单元的报文
     //ASDU apduToasdu(const APDU &apdu);//104的APDU转101的ASDU
@@ -116,7 +121,7 @@ private:
     unsigned short VS; //发送包计数
     unsigned short VR; //接受包计数
     bool seq_order_check; //是否允许乱序
-    DataCache dataCache_;
+
 };
 
 #endif // IEC104Parser_H
